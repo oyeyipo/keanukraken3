@@ -145,6 +145,7 @@
         var center = svg.append("circle").attr("r", radius / 3).on("click", zoomOut);
         center.append("title").text("zoom out");
         var partitioned_data = partition.nodes(root).slice(1);
+        console.log('Partitioned Data', partitioned_data)
         var path = svg.selectAll("path").data(partitioned_data).enter().append("path").attr("d", arc).style("fill", function (d) {
             return d.fill;
         }).each(function (d) {
@@ -165,14 +166,55 @@
 
 
         function zoomIn(p) {
+            var data;
+            var depth = p.depth
+            var initial_name = p.name
+
             if (p.depth > 1) p = p.parent;
             if (!p.children) return;
             zoom(p, p);
+            console.log('ZoomIn After', p)
+
+            var nodes = tree.nodes(tree_root).reverse(),
+                links = tree.links(nodes);
+
+            nodes.forEach(function (d) {
+                d.y = d.depth * 180
+            });
+
+            // if (depth > 1) {
+            //     var name = p.name
+            //     for (var i = 0; i < depth; i++) {
+            //         for (var item of nodes) {
+            //             if (name == item.name) {
+            //                 data = item
+            //                 name = initial_name
+            //             }
+            //         }
+            //         console.log(data)
+            //         click(data)
+            //     }
+            // }
+
+            console.log('ZoomIn tree', nodes)
+
+            // console.log('DEPTH ======>', depth)
+            // console.log('INITIAL_NAME ======>', initial_name)
+
+
+            for (var item of nodes) {
+                if (p.name == item.name) {
+                    data = item
+                }
+            }
+
+            click(data)
         }
 
         function zoomOut(p) {
             if (!p.parent) return;
             zoom(p.parent, p);
+            console.log('ZoomOut', p)
         }
 
         function zoom(root, p) {
@@ -325,10 +367,14 @@
             nodes.forEach(function (d) {
                 d.y = d.depth * 180
             });
+
+            console.log('From Update nodes', nodes)
+
             var node = tree_svg.selectAll("g.node").data(nodes, function (d) {
                 return d.id || (d.id = ++i);
             });
             var nodeEnter = node.enter().append("g").attr("class", "node").attr("transform", function (d) {
+                console.log('passed data on click', d)
                 return "translate(" + source.y0 + "," + source.x0 + ")";
             }).on("click", click);
             nodeEnter.append("circle").attr("r", 1e-6).style("fill", function (d) {
@@ -386,11 +432,12 @@
         }
 
         function click(d) {
+            console.log('ClickTree', d)
             if (d.children) {
-                d._children = d.children;
+                d._children = d.children; // undisplay
                 d.children = null;
             } else {
-                d.children = d._children;
+                d.children = d._children;  // display
                 d._children = null;
             }
             update(d);
