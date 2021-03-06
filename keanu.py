@@ -1,20 +1,36 @@
 import sys
-import itertools
+
+# import itertools
 import argparse
 from collections import Counter
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-db", "--database", help="Formatted taxonomy database")
-parser.add_argument("-md_db", "--merged_deleted_database", help="Merged/deleted taxonomy database")
+parser.add_argument(
+    "-md_db", "--merged_deleted_database", help="Merged/deleted taxonomy database"
+)
 parser.add_argument("-view", "--view", choices=["tree", "bilevel"], help="View choice")
 parser.add_argument("-in", "--input", help="Input data set")
-parser.add_argument("-in_format", "--input_format", choices=["kraken", "blast"], help="Format type of input data set.")
+parser.add_argument(
+    "-in_format",
+    "--input_format",
+    choices=["kraken", "blast"],
+    help="Format type of input data set.",
+)
 parser.add_argument("-out", "--output", help="Output HTML filename")
-parser.add_argument("-export", "--export", help="Export node/contig assignments to user-specified file")
-parser.add_argument("-ts", "--to_species", action='store_true',
-                    help="Assign ambiguous hits without attempting to find deepest common classification")
+parser.add_argument(
+    "-export", "--export", help="Export node/contig assignments to user-specified file"
+)
+parser.add_argument(
+    "-ts",
+    "--to_species",
+    action="store_true",
+    help="Assign ambiguous hits without attempting to find deepest common classification",
+)
 parser.add_argument("-col_ct", "--coltaxoncount", help="kraken column with taxon count")
-parser.add_argument("-col_taxid", "--coltaxonid", help="kraken column with taxon identifier")                    
+parser.add_argument(
+    "-col_taxid", "--coltaxonid", help="kraken column with taxon identifier"
+)
 
 if len(sys.argv) == 1:
     parser.print_help(sys.stderr)
@@ -22,11 +38,12 @@ if len(sys.argv) == 1:
 
 args = parser.parse_args()
 
-#Check kraken arguments
+# Check kraken arguments
 if args.input_format == "kraken":
     if args.coltaxoncount is None or args.coltaxonid is None:
         sys.stderr.write(
-            "Usage: kraken format requires the column numbers for the taxon count and the taxon id! (Example for kraken report with report-minimizer-data columns: -col_taxid 7 -col_ct 3)\n")
+            "Usage: kraken format requires the column numbers for the taxon count and the taxon id! (Example for kraken report with report-minimizer-data columns: -col_taxid 7 -col_ct 3)\n"
+        )
         parser.print_help(sys.stderr)
         sys.exit(1)
 
@@ -42,7 +59,7 @@ elif args.view == "bilevel":
 # Taxon class
 # Stores information about individual nodes in the graph
 class Taxon:
-    'A class for storing information about taxons'
+    "A class for storing information about taxons"
 
     def __init__(self, taxon, source, rank, name):
         self.taxon = taxon
@@ -68,13 +85,15 @@ class Taxon:
             self.descendants.remove(target)
 
     def __repr__(self):
-        return (str(self.taxon) + " (" + str(self.coverage) + ") " + str(self.descendants))
+        return (
+            str(self.taxon) + " (" + str(self.coverage) + ") " + str(self.descendants)
+        )
 
 
 # Graph class
 # Organizes the links between nodes into a tree for ascending/descending
 class Graph:
-    'A helper class for linking and searching taxonomy information'
+    "A helper class for linking and searching taxonomy information"
 
     def __init__(self):
         self.vertices = {}
@@ -101,46 +120,86 @@ class Graph:
             del self.vertices[each]
 
     def add_unassigned(self):
-        annotated_lineage = ["root", "superkingdom", "kingdom", "phylum", "class", "order", "suborder", "family",
-                             "genus", "species"]
+        annotated_lineage = [
+            "root",
+            "superkingdom",
+            "kingdom",
+            "phylum",
+            "class",
+            "order",
+            "suborder",
+            "family",
+            "genus",
+            "species",
+        ]
         added = {}
         for each in self.vertices:
             number_of_assigned = 0
-            if self.vertices[each].rank in annotated_lineage and self.vertices[each].rank != "species":
+            if (
+                self.vertices[each].rank in annotated_lineage
+                and self.vertices[each].rank != "species"
+            ):
                 for descendant in self.vertices[each].descendants:
                     number_of_assigned += self.vertices[descendant].coverage
                 number_of_unassigned = self.vertices[each].coverage - number_of_assigned
-                added[each * -1] = Taxon(each * -1, each,
-                                         annotated_lineage[annotated_lineage.index(self.vertices[each].rank) + 1],
-                                         "unassigned " + self.vertices[each].name)
+                added[each * -1] = Taxon(
+                    each * -1,
+                    each,
+                    annotated_lineage[
+                        annotated_lineage.index(self.vertices[each].rank) + 1
+                    ],
+                    "unassigned " + self.vertices[each].name,
+                )
                 added[each * -1].coverage = number_of_unassigned
                 self.vertices[each].descendants.append(each * -1)
         for each in added:
             self.vertices[each] = added[each]
 
     def recursive_depth_first_search(self, taxon, visited_taxons, json):
-        annotated_lineage = ["root", "superkingdom", "kingdom", "phylum", "class", "order", "suborder", "family",
-                             "genus", "species"]
+        annotated_lineage = [
+            "root",
+            "superkingdom",
+            "kingdom",
+            "phylum",
+            "class",
+            "order",
+            "suborder",
+            "family",
+            "genus",
+            "species",
+        ]
         vertex = self.vertices[taxon]
         visited_taxons.append(taxon)
         if vertex.coverage != 0:
             if vertex.rank in annotated_lineage or vertex.name == "root":
                 if len(vertex.descendants) != 0:
-                    json += ("{" + '"name": "{:s} ({:d})", "size": "{:d}", "children": ['.format(vertex.name,
-                                                                                                 vertex.coverage,
-                                                                                                 vertex.coverage))
+                    json += (
+                        "{"
+                        + '"name": "{:s} ({:d})", "size": "{:d}", "children": ['.format(
+                            vertex.name, vertex.coverage, vertex.coverage
+                        )
+                    )
 
                     for descendant in vertex.descendants:
                         if descendant not in visited_taxons and descendant != None:
-                            (visited_taxons, json) = self.recursive_depth_first_search(descendant, visited_taxons, json)
+                            (visited_taxons, json) = self.recursive_depth_first_search(
+                                descendant, visited_taxons, json
+                            )
                     json += "]},"
                 else:
-                    json += ("{" + '"name": "{:s} ({:d})", "size": "{:d}"'.format(vertex.name, vertex.coverage,
-                                                                                  vertex.coverage) + "},")
+                    json += (
+                        "{"
+                        + '"name": "{:s} ({:d})", "size": "{:d}"'.format(
+                            vertex.name, vertex.coverage, vertex.coverage
+                        )
+                        + "},"
+                    )
             else:
                 for descendant in vertex.descendants:
                     if descendant not in visited_taxons:
-                        (visited_taxons, json) = self.recursive_depth_first_search(descendant, visited_taxons, json)
+                        (visited_taxons, json) = self.recursive_depth_first_search(
+                            descendant, visited_taxons, json
+                        )
         return visited_taxons, json
 
 
@@ -156,7 +215,9 @@ with open(args.database) as taxa_data_file:
         rank = data[2]
         name = data[3]
         if data[4] != "[]":
-            descendants = [int(descendant[1:-1]) for descendant in data[4][1:-1].split(", ")]
+            descendants = [
+                int(descendant[1:-1]) for descendant in data[4][1:-1].split(", ")
+            ]
         else:
             descendants = []
         tree.add_vertex(taxon, source, rank, name, descendants)
@@ -177,40 +238,65 @@ assignments = {}
 if args.input_format == "kraken":
     index = 0
     with open(args.input) as kraken_report_file:
-        annotated_lineage = ["root", "superkingdom", "kingdom", "phylum", "class", "order", "suborder", "family", "genus",
-                             "species"]
+        annotated_lineage = [
+            "root",
+            "superkingdom",
+            "kingdom",
+            "phylum",
+            "class",
+            "order",
+            "suborder",
+            "family",
+            "genus",
+            "species",
+        ]
         for line in kraken_report_file:
             index += 1
             contig = index
             line_split = line.strip("\n").split("\t")
-            if len(line_split) < 6 or int(args.coltaxonid) > len(line_split) or int(args.coltaxoncount) > len(line_split):
-                sys.stderr.write("ERROR: Reading line 1 of Kraken_Report. This is not a Kraken Report or column numbers are wrong: " + line)
+            if (
+                len(line_split) < 6
+                or int(args.coltaxonid) > len(line_split)
+                or int(args.coltaxoncount) > len(line_split)
+            ):
+                sys.stderr.write(
+                    "ERROR: Reading line 1 of Kraken_Report. This is not a Kraken Report or column numbers are wrong: "
+                    + line
+                )
                 break
-            txCount=int(line_split[int(args.coltaxoncount)-1])
-            taxon = int(line_split[int(args.coltaxonid)-1])
+            txCount = int(line_split[int(args.coltaxoncount) - 1])
+            taxon = int(line_split[int(args.coltaxonid) - 1])
             if taxon > 0 and txCount > 0:
-                parent_counts= {} 
-                parent_counts[taxon]=txCount
-                tx=taxon
-                i=0
-                tx_p=tx
-                print ("taxon="+str(taxon)+", txCount="+str(txCount))
-                while tx!=1 and i<15: #i<15 insurance in case tree.vertices were not built correctly
-                    tx=tx_p
+                parent_counts = {}
+                parent_counts[taxon] = txCount
+                tx = taxon
+                i = 0
+                tx_p = tx
+                print("taxon=" + str(taxon) + ", txCount=" + str(txCount))
+                while (
+                    tx != 1 and i < 15
+                ):  # i<15 insurance in case tree.vertices were not built correctly
+                    tx = tx_p
                     if tx in merged:
                         tx = merged[tx]
-                        i+=1 
+                        i += 1
                     try:
                         tx_p = tree.vertices[tx].source
-                        parent_counts[tx_p]=txCount
+                        parent_counts[tx_p] = txCount
                     except:
                         if tx in deleted:
                             sys.stderr.write(
-                                "WARNING: Keanu has encountered a deleted taxon ID (" + str(tx) + ") in the BLAST results.\n")
+                                "WARNING: Keanu has encountered a deleted taxon ID ("
+                                + str(tx)
+                                + ") in the BLAST results.\n"
+                            )
                         else:
-                            sys.stderr.write("WARNING: Keanu has encountered a taxon ID (" + str(
-                                tx) + ") in the BLAST results that is not in the taxonomy database or merged/deleted database.\n")
-                parent_counts[1]=txCount #root
+                            sys.stderr.write(
+                                "WARNING: Keanu has encountered a taxon ID ("
+                                + str(tx)
+                                + ") in the BLAST results that is not in the taxonomy database or merged/deleted database.\n"
+                            )
+                parent_counts[1] = txCount  # root
                 sys.stderr.write(str(parent_counts) + "\n")
 
                 # print(parent_counts)
@@ -222,20 +308,31 @@ if args.input_format == "kraken":
                         try:
                             highest = sorted(parent_counts.values())[-2]
                         except IndexError as e:
-                            sys.stderr.write("WARNING: Skipping value due to low count of parents.\n")
+                            sys.stderr.write(
+                                "WARNING: Skipping value due to low count of parents.\n"
+                            )
                             continue
                         root = sorted(parent_counts.values())[-1]
                         if highest == 1 and root != 1:
                             sys.stderr.write(
-                                contig + " was assigned to root. Check your BLAST results for " + contig + ", especially e-scores.\n")
+                                contig
+                                + " was assigned to root. Check your BLAST results for "
+                                + contig
+                                + ", especially e-scores.\n"
+                            )
                             common_candidates = set()
                             taxon = tree.vertices[1]
                             tree.vertices[taxon.taxon].coverage += 1
                         else:
-                            common_candidates = [k for k, v in parent_counts.items() if v == highest]
+                            common_candidates = [
+                                k for k, v in parent_counts.items() if v == highest
+                            ]
                             for i in range(0, len(common_candidates)):
                                 each = common_candidates[i]
-                                while tree.vertices[each].rank not in annotated_lineage and tree.vertices[each].name != "root":
+                                while (
+                                    tree.vertices[each].rank not in annotated_lineage
+                                    and tree.vertices[each].name != "root"
+                                ):
                                     each = tree.vertices[each].source
                                 common_candidates[i] = each
                                 # print(common_candidates)
@@ -245,32 +342,57 @@ if args.input_format == "kraken":
                             if len(common_candidates) > 1:
                                 for each in common_candidates:
                                     try:
-                                        if annotated_lineage.index(tree.vertices[each].rank) > depth:
-                                            depth = annotated_lineage.index(tree.vertices[each].rank)
+                                        if (
+                                            annotated_lineage.index(
+                                                tree.vertices[each].rank
+                                            )
+                                            > depth
+                                        ):
+                                            depth = annotated_lineage.index(
+                                                tree.vertices[each].rank
+                                            )
                                             taxon = tree.vertices[each]
                                     except:
                                         pass
                             else:
                                 taxon = tree.vertices[common_candidates.pop()]
 
-                            while "uncultured" in taxon.name or "unidentified" in taxon.name or "synthetic" in taxon.name:
+                            while (
+                                "uncultured" in taxon.name
+                                or "unidentified" in taxon.name
+                                or "synthetic" in taxon.name
+                            ):
                                 taxon = tree.vertices[taxon.source]
 
                             while taxon.name != "root":
                                 if taxon.name not in assignments:
                                     assignments[taxon.name] = []
                                 assignments[taxon.name].append(contig)
-                                tree.vertices[taxon.taxon].coverage += int(parent_counts[taxon.taxon])
+                                tree.vertices[taxon.taxon].coverage += int(
+                                    parent_counts[taxon.taxon]
+                                )
                                 taxon = tree.vertices[taxon.source]
-                            tree.vertices[taxon.taxon].coverage += int(parent_counts[taxon.taxon])
-                    
+                            tree.vertices[taxon.taxon].coverage += int(
+                                parent_counts[taxon.taxon]
+                            )
+
             else:
                 continue
 
-else: # some blast-derived format
+else:  # some blast-derived format
     with open(args.input) as blast_taxon_coverage_file:
-        annotated_lineage = ["root", "superkingdom", "kingdom", "phylum", "class", "order", "suborder", "family", "genus",
-                             "species"]
+        annotated_lineage = [
+            "root",
+            "superkingdom",
+            "kingdom",
+            "phylum",
+            "class",
+            "order",
+            "suborder",
+            "family",
+            "genus",
+            "species",
+        ]
         for line in blast_taxon_coverage_file:
             contig = line.strip("\n").split("\t")[0]
             if "," in line.strip("\n").split("\t")[1]:
@@ -317,10 +439,16 @@ else: # some blast-derived format
                 except:
                     if each in deleted:
                         sys.stderr.write(
-                            "WARNING: Keanu has encountered a deleted taxon ID (" + str(each) + ") in the BLAST results.\n")
+                            "WARNING: Keanu has encountered a deleted taxon ID ("
+                            + str(each)
+                            + ") in the BLAST results.\n"
+                        )
                     else:
-                        sys.stderr.write("WARNING: Keanu has encountered a taxon ID (" + str(
-                            each) + ") in the BLAST results that is not in the taxonomy database or merged/deleted database.\n")
+                        sys.stderr.write(
+                            "WARNING: Keanu has encountered a taxon ID ("
+                            + str(each)
+                            + ") in the BLAST results that is not in the taxonomy database or merged/deleted database.\n"
+                        )
                 i += 1
             parent_counts = Counter(parents)
             sys.stderr.write(str(parent_counts) + "\n")
@@ -334,20 +462,31 @@ else: # some blast-derived format
                     try:
                         highest = sorted(parent_counts.values())[-2]
                     except IndexError as e:
-                        sys.stderr.write("WARNING: Skipping value due to low count of parents.\n")
+                        sys.stderr.write(
+                            "WARNING: Skipping value due to low count of parents.\n"
+                        )
                         continue
                     root = sorted(parent_counts.values())[-1]
                     if highest == 1 and root != 1:
                         sys.stderr.write(
-                            contig + " was assigned to root. Check your BLAST results for " + contig + ", especially e-scores.\n")
+                            contig
+                            + " was assigned to root. Check your BLAST results for "
+                            + contig
+                            + ", especially e-scores.\n"
+                        )
                         common_candidates = set()
                         taxon = tree.vertices[1]
                         tree.vertices[taxon.taxon].coverage += 1
                     else:
-                        common_candidates = [k for k, v in parent_counts.items() if v == highest]
+                        common_candidates = [
+                            k for k, v in parent_counts.items() if v == highest
+                        ]
                         for i in range(0, len(common_candidates)):
                             each = common_candidates[i]
-                            while tree.vertices[each].rank not in annotated_lineage and tree.vertices[each].name != "root":
+                            while (
+                                tree.vertices[each].rank not in annotated_lineage
+                                and tree.vertices[each].name != "root"
+                            ):
                                 each = tree.vertices[each].source
                             common_candidates[i] = each
                             # print(common_candidates)
@@ -357,15 +496,26 @@ else: # some blast-derived format
                         if len(common_candidates) > 1:
                             for each in common_candidates:
                                 try:
-                                    if annotated_lineage.index(tree.vertices[each].rank) > depth:
-                                        depth = annotated_lineage.index(tree.vertices[each].rank)
+                                    if (
+                                        annotated_lineage.index(
+                                            tree.vertices[each].rank
+                                        )
+                                        > depth
+                                    ):
+                                        depth = annotated_lineage.index(
+                                            tree.vertices[each].rank
+                                        )
                                         taxon = tree.vertices[each]
                                 except:
                                     pass
                         else:
                             taxon = tree.vertices[common_candidates.pop()]
 
-                        while "uncultured" in taxon.name or "unidentified" in taxon.name or "synthetic" in taxon.name:
+                        while (
+                            "uncultured" in taxon.name
+                            or "unidentified" in taxon.name
+                            or "synthetic" in taxon.name
+                        ):
                             taxon = tree.vertices[taxon.source]
 
                         while taxon.name != "root":
@@ -377,19 +527,25 @@ else: # some blast-derived format
                         tree.vertices[taxon.taxon].coverage += 1
 
 tree.add_unassigned()
-json = tree.recursive_depth_first_search(1, [], "")[1].replace("[,", "[").replace("},]", "}]").replace("'",
-                                                                                                       "\\'").replace(
-    ", \"children\": []", "").strip(",")
-if json == "{\"name\": \"root (1)\", \"size\": \"1\"}":
+json = (
+    tree.recursive_depth_first_search(1, [], "")[1]
+    .replace("[,", "[")
+    .replace("},]", "}]")
+    .replace("'", "\\'")
+    .replace(', "children": []', "")
+    .strip(",")
+)
+if json == '{"name": "root (1)", "size": "1"}':
     sys.stderr.write(
-        "No assignments could be made besides to root node, and no output will be created. Check your BLAST results, especially e-scores.\n")
+        "No assignments could be made besides to root node, and no output will be created. Check your BLAST results, especially e-scores.\n"
+    )
 else:
-    with open(args.output, 'w') as output_file:
+    with open(args.output, "w") as output_file:
         output_file.write(before_html + json + after_html)
 
     if args.export:
         assignment_string = ""
         for each in assignments:
             assignment_string += each + "\t" + str(assignments[each]) + "\n"
-        with open(args.export, 'w') as output_file:
+        with open(args.export, "w") as output_file:
             output_file.write(assignment_string)
